@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
 from typing import List
-from recommender import like_movie, recommend_hybrid, train_model
+from recommender import like_movie, recommend_hybrid, train_model, dislike_movie
 from models import LikeRequest, RecommendResponse, UserSignup, UserLogin
 from utils.auth_utils import hash_password, verify_password, get_current_user
 from db import users_collection
@@ -65,6 +65,19 @@ def like(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Dep
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+
+@app.post("/dislike")
+def dislike(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+    try:
+        result = dislike_movie(user_id, req.movie_title)
+        background_tasks.add_task(train_model)
+        return {"message": result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
 
 
 @app.post("/train")

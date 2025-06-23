@@ -93,6 +93,29 @@ def like_movie(user_id, movie_title):
 
 
 # ---------------------------
+# Dislike a movie
+# ---------------------------
+
+def dislike_movie(user_id, movie_title):
+    match = movies_df[movies_df["title"].str.lower() == movie_title.lower()]
+    if match.empty:
+        raise ValueError(f"Movie '{movie_title}' not found.")
+
+    tmdb_id = match.iloc[0]["tmdb_id"]
+
+    result = likes_collection.delete_one({
+        "user_id": user_id,
+        "tmdb_id": int(tmdb_id)
+    })
+
+    if result.deleted_count == 0:
+        raise ValueError(f"No like found for user {user_id} and movie '{movie_title}'")
+
+    load_likes_from_db()  # Rebuild encoder and interactions
+    return f"👎 User {user_id} disliked '{movie_title}'"
+
+
+# ---------------------------
 # Recommend movies
 # ---------------------------
 
