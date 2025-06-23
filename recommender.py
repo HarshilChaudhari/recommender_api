@@ -4,8 +4,12 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from scipy.sparse import coo_matrix
 from lightfm import LightFM
+from db import likes_collection
 
-# Load preprocessed data
+# ---------------------------
+# Load model data from file
+# ---------------------------
+
 with open("data/preprocessed_model_data.pkl", "rb") as f:
     data = pickle.load(f)
 
@@ -13,33 +17,42 @@ movies_df = data["movies_df"]
 movie_enc = data["movie_enc"]
 item_features_sparse = data["item_features_sparse"]
 
-likes_data = []
+# ---------------------------
+# Globals
+# ---------------------------
+
 user_enc = LabelEncoder()
+likes_data = []
+interactions = None
+model = None
 
-def like_movie(user_id, movie_title):
-    global likes_data
+# ---------------------------
+# Load Likes from MongoDB
+# ---------------------------
 
-    match = movies_df[movies_df["title"].str.lower() == movie_title.lower()]
-    if match.empty:
-        raise ValueError(f"Movie '{movie_title}' not found.")
+def load_likes_from_db():
+    global likes_data, user_enc
 
-    tmdb_id = match.iloc[0]["tmdb_id"]
-    movie_idx = movie_enc.transform([tmdb_id])[0]
+    all_likes = list(likes_collection.find({}))
+    if not all_likes:
+        print("ℹ️ No likes in database.")
+        return
 
-    # Initialize LabelEncoder with the first user
-    if not hasattr(user_enc, "classes_"):
-        user_enc.fit([user_id])
+    user_ids = sorted({like["user_id"] for like in all_likes})
+    user_enc.fit(user_ids)
 
-    # Register user if not already encoded
-    if user_id not in user_enc.classes_:
-        new_classes = list(user_enc.classes_) + [user_id]
-        user_enc.classes_ = np.array(new_classes)
+    likes_data.clear()
+    for entry in all_likes:
+        try:
+            user_idx = user_enc.transform([entry["user_id"]])[0]
+            movie_idx = movie_enc.transform([entry["tmdb_id"]])[0]
+            likes_data.append((user_idx, movie_idx))
+        except:
+            continue
 
-    user_idx = user_enc.transform([user_id])[0]
-    likes_data.append((user_idx, movie_idx))
-
-    return f"👍 User {user_id} liked '{movie_title}'"
-
+# ---------------------------
+# Train the model
+# ---------------------------
 
 def train_model():
     global model, interactions
@@ -48,18 +61,47 @@ def train_model():
         raise ValueError("No likes provided yet.")
 
     user_ids, movie_ids = zip(*likes_data)
-    interactions = coo_matrix((np.ones(len(user_ids)), (user_ids, movie_ids)),
-                              shape=(len(user_enc.classes_), len(movie_enc.classes_)))
+    interactions = coo_matrix(
+        (np.ones(len(user_ids)), (user_ids, movie_ids)),
+        shape=(len(user_enc.classes_), len(movie_enc.classes_))
+    )
 
-    model = LightFM(loss='warp')
+    model = LightFM(loss="warp")
     model.fit(interactions, item_features=item_features_sparse, epochs=10, num_threads=2)
+    print("✅ Model trained.")
+
+
+# ---------------------------
+# Like a movie
+# ---------------------------
+
+def like_movie(user_id, movie_title):
+    match = movies_df[movies_df["title"].str.lower() == movie_title.lower()]
+    if match.empty:
+        raise ValueError(f"Movie '{movie_title}' not found.")
+
+    tmdb_id = match.iloc[0]["tmdb_id"]
+
+    likes_collection.update_one(
+        {"user_id": user_id, "tmdb_id": int(tmdb_id)},
+        {"$set": {"user_id": user_id, "tmdb_id": int(tmdb_id)}},
+        upsert=True
+    )
+
+    load_likes_from_db()
+    return f"👍 User {user_id} liked '{movie_title}'"
+
+
+# ---------------------------
+# Recommend movies
+# ---------------------------
 
 def recommend_hybrid(user_id, n=10):
-    if not hasattr(user_enc, "classes_"):
-        raise ValueError(f"User encoder not initialized. Have any users liked movies?")
+    if model is None:
+        raise ValueError("Model not trained yet. Please train first.")
 
     if user_id not in user_enc.classes_:
-        raise ValueError(f"User ID {user_id} not found. Like a movie first.")
+        raise ValueError(f"User {user_id} not found. Like a movie first.")
 
     user_idx = user_enc.transform([user_id])[0]
     scores = model.predict(
@@ -67,7 +109,21 @@ def recommend_hybrid(user_id, n=10):
         item_ids=np.arange(len(movie_enc.classes_)),
         item_features=item_features_sparse
     )
+
     top_items = np.argsort(-scores)[:n]
     tmdb_ids = movie_enc.inverse_transform(top_items)
 
     return movies_df[movies_df["tmdb_id"].isin(tmdb_ids)][["title", "genres"]].reset_index(drop=True)
+
+# ---------------------------
+# Automatically retrain on startup
+# ---------------------------
+
+load_likes_from_db()
+if likes_data:
+    try:
+        train_model()
+    except Exception as e:
+        print("⚠️ Error during model training:", str(e))
+else:
+    print("ℹ️ No likes found on startup — model not trained.")

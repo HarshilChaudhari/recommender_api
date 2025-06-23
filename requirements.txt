@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+pymongo
 scikit-learn
 lightfm
 pandas
