@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+scikit-learn
+lightfm
+pandas
+numpy
+sentence-transformers
+scipy
+tqdm
