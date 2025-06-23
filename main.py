@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Query, Depends
-from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
+from typing import List
 from recommender import like_movie, recommend_hybrid, train_model
-from models import LikeRequest, RecommendResponse, AuthRequest
-from auth_utils import hash_password, verify_password, get_current_user
+from models import LikeRequest, RecommendResponse, UserSignup, UserLogin
+from utils.auth_utils import hash_password, verify_password, get_current_user
 from db import users_collection
 import pickle
 import pandas as pd
@@ -29,7 +29,7 @@ movies_df = data["movies_df"]
 # -------------------------------
 
 @app.post("/signup")
-def signup(user: AuthRequest):
+def signup(user: UserSignup):
     if users_collection.find_one({"user_id": user.user_id}):
         raise HTTPException(status_code=400, detail="User already exists")
     
@@ -38,7 +38,7 @@ def signup(user: AuthRequest):
     return {"message": "✅ User registered successfully"}
 
 @app.post("/login")
-def login(user: AuthRequest):
+def login(user: UserLogin):
     db_user = users_collection.find_one({"user_id": user.user_id})
     if not db_user or not verify_password(user.password, db_user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -56,9 +56,10 @@ def root():
 
 
 @app.post("/like")
-def like(req: LikeRequest, user_id: str = Depends(get_current_user)):
+def like(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     try:
         result = like_movie(user_id, req.movie_title)
+        background_tasks.add_task(train_model)
         return {"message": result}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -77,8 +78,8 @@ def train():
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
 
-@app.get("/recommend/{user_id}", response_model=List[RecommendResponse])
-def recommend(user_id: str):
+@app.get("/recommend", response_model=List[RecommendResponse])
+def recommend(user_id: str = Depends(get_current_user)):
     try:
         df = recommend_hybrid(user_id)
         return df.to_dict(orient="records")
@@ -107,4 +108,3 @@ def search_movies(query: str = Query(..., min_length=2)):
         return results[["title", "genres"]].head(20).reset_index(drop=True).to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
-
