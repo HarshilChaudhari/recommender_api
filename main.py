@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from typing import List, Optional
 from recommender import like_movie, recommend_hybrid, train_model
-from models import LikeRequest, RecommendResponse
+from models import LikeRequest, RecommendResponse, AuthRequest
+from auth_utils import hash_password, verify_password, get_current_user
+from db import users_collection
 import pickle
 import pandas as pd
+import jwt
+import os
 
 app = FastAPI(
     title="🎬 Movie Recommender API",
@@ -11,12 +15,36 @@ app = FastAPI(
     version="1.0.0"
 )
 
+SECRET_KEY = os.getenv("SECRET_KEY", "fd1b2d22ccf1b78d895b82d435671359bd2404ada60e8548cf71fa96fb998988")
+
 # -------------------------------
 # Load preprocessed movies data
 # -------------------------------
 with open("data/preprocessed_model_data.pkl", "rb") as f:
     data = pickle.load(f)
 movies_df = data["movies_df"]
+
+# -------------------------------
+# Auth Endpoints
+# -------------------------------
+
+@app.post("/signup")
+def signup(user: AuthRequest):
+    if users_collection.find_one({"user_id": user.user_id}):
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    hashed_pw = hash_password(user.password)
+    users_collection.insert_one({"user_id": user.user_id, "password": hashed_pw})
+    return {"message": "✅ User registered successfully"}
+
+@app.post("/login")
+def login(user: AuthRequest):
+    db_user = users_collection.find_one({"user_id": user.user_id})
+    if not db_user or not verify_password(user.password, db_user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    token = jwt.encode({"user_id": user.user_id}, SECRET_KEY, algorithm="HS256")
+    return {"token": token}
 
 # -------------------------------
 # API Routes
@@ -28,9 +56,9 @@ def root():
 
 
 @app.post("/like")
-def like(req: LikeRequest):
+def like(req: LikeRequest, user_id: str = Depends(get_current_user)):
     try:
-        result = like_movie(req.user_id, req.movie_title)
+        result = like_movie(user_id, req.movie_title)
         return {"message": result}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -50,9 +78,9 @@ def train():
 
 
 @app.get("/recommend/{user_id}", response_model=List[RecommendResponse])
-def recommend(user_id: str, n: Optional[int] = 10):
+def recommend(user_id: str):
     try:
-        df = recommend_hybrid(user_id, n=n)
+        df = recommend_hybrid(user_id)
         return df.to_dict(orient="records")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -62,7 +90,6 @@ def recommend(user_id: str, n: Optional[int] = 10):
 
 @app.get("/popular")
 def get_popular_movies(n: int = 20):
-    """Return top n popular movies based on vote count and average."""
     try:
         top_movies = movies_df.sort_values(
             by=["vote_count", "vote_average"],
@@ -75,9 +102,9 @@ def get_popular_movies(n: int = 20):
 
 @app.get("/search")
 def search_movies(query: str = Query(..., min_length=2)):
-    """Search movies by title keyword."""
     try:
         results = movies_df[movies_df["title"].str.contains(query, case=False, na=False)]
         return results[["title", "genres"]].head(20).reset_index(drop=True).to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+

@@ -9,3 +9,12 @@ class LikeRequest(BaseModel):
 class RecommendResponse(BaseModel):
     title: str
     genres: List[str]
+
+class UserSignup(BaseModel):
+    user_id: str
+    password: str
+
+class UserLogin(BaseModel):
+    user_id: str
+    password: str
+
