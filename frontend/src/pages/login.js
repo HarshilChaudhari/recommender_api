@@ -26,7 +26,7 @@ export default function LoginPage() {
       Cookies.set('token', data.token);
       router.push('/home');
     } catch (err) {
-      alert('Login failed: ' + err.message);
+      alert('Login failed: ' + err + user_id + password);
     }
   };
 
