@@ -4,6 +4,7 @@ export async function fetchWithAuth(path, options = {}) {
   const token = Cookies.get('token');
   const headers = {
     'Content-Type': 'application/json',
+    "ngrok-skip-browser-warning": "true",
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 

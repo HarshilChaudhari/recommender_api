@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Cookies from 'js-cookie';
 import { fetchWithAuth } from '../utils/api';
+import { jwtDecode } from 'jwt-decode';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('all');
@@ -74,6 +75,63 @@ export default function HomePage() {
     setSearchResults(null);
   };
 
+  const getUserIdFromToken = () => {
+    const token = Cookies.get('token');
+    if (!token) return null;
+    try {
+      const decoded = jwtDecode(token);
+      return decoded.user_id;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleDislike = async (movie) => {
+    setLoading(true);
+    setError('');
+    try {
+      const user_id = getUserIdFromToken();
+      await fetchWithAuth('/dislike', {
+        method: 'POST',
+        body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
+      });
+      // Refresh liked movies after disliking
+      const updatedLiked = await fetchWithAuth('/liked');
+      setLikedMovies(updatedLiked);
+      // Optionally, refresh recommendations as well
+      if (activeTab === 'recommended') {
+        const updatedRecommended = await fetchWithAuth('/recommend');
+        setRecommendedMovies(updatedRecommended);
+      }
+    } catch (e) {
+      setError('Failed to dislike movie');
+    }
+    setLoading(false);
+  };
+
+  const handleLike = async (movie) => {
+    setLoading(true);
+    setError('');
+    try {
+      const user_id = getUserIdFromToken();
+      await fetchWithAuth('/like', {
+        method: 'POST',
+        body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
+      });
+      // Refresh liked movies after liking
+      const updatedLiked = await fetchWithAuth('/liked');
+      setLikedMovies(updatedLiked);
+      // Optionally, refresh recommendations as well
+      if (activeTab === 'recommended') {
+        const updatedRecommended = await fetchWithAuth('/recommend');
+        setRecommendedMovies(updatedRecommended);
+      }
+    } catch (e) {
+      setError('Failed to like movie');
+    }
+    setLoading(false);
+  };
+
   // Choose which list to display
   let displayList = [];
   if (searchResults !== null) {
@@ -121,11 +179,65 @@ export default function HomePage() {
       {loading && <div>Loading...</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      <ul>
-        {displayList.map((movie, idx) => (
-          <li key={idx}><strong>{movie.title}</strong> – {movie.genres.join(', ')}</li>
-        ))}
-      </ul>
+        {activeTab === 'liked' ? (
+          <div>
+            <h2>Liked Movies</h2>
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {displayList.map((movie, idx) => (
+                <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+                  <img
+                    src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+                    alt={movie.title}
+                    style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
+                  />
+                  <div>
+                    <strong>{movie.title}</strong> – {movie.genres.join(', ')}
+                  <div><em>Release Date:</em> {movie.release_date}</div>
+                  <div style={{ maxWidth: '400px' }}>{movie.overview}</div>
+                  {activeTab === 'recommended' && movie.score !== undefined && (
+                    <div>Score: {movie.score.toFixed(3)}</div>
+                  )}
+                    <div>
+                      <button onClick={() => handleDislike(movie)} style={{ marginTop: '0.5rem' }}>
+                        Dislike
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+
+        <ul style={{ listStyle: 'none', padding: 0 }}>
+          {displayList.map((movie, idx) => (
+            <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+              <img
+                src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+                alt={movie.title}
+                style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
+              />
+              <div>
+                <strong>{movie.title}</strong> – {movie.genres.join(', ')}
+              <div><em>Release Date:</em> {movie.release_date}</div>
+              <div style={{ maxWidth: '400px' }}>{movie.overview}</div>
+              {activeTab === 'recommended' && movie.score !== undefined && (
+                <div>Score: {movie.score.toFixed(3)}</div>
+              )}
+                
+                {(activeTab === 'all' || activeTab === 'recommended') && (
+                  <div>
+                    <button onClick={() => handleLike(movie)} style={{ marginTop: '0.5rem' }}>
+                      Like
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+      )}
 
       {/* Pagination for All Movies */}
       {activeTab === 'all' && searchResults === null && (

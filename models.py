@@ -4,6 +4,7 @@ from typing import List
 
 class LikeRequest(BaseModel):
     user_id: str
+    tmdb_id: int
     movie_title: str
 
 class RecommendResponse(BaseModel):

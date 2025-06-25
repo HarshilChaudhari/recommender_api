@@ -75,44 +75,35 @@ def train_model():
 # Like a movie
 # ---------------------------
 
-def like_movie(user_id, movie_title):
-    match = movies_df[movies_df["title"].str.lower() == movie_title.lower()]
-    if match.empty:
-        raise ValueError(f"Movie '{movie_title}' not found.")
-
-    tmdb_id = match.iloc[0]["tmdb_id"]
-
+def like_movie(user_id, tmdb_id, movie_title=None):
+    if tmdb_id not in movies_df["tmdb_id"].values:
+        raise ValueError(f"TMDB ID {tmdb_id} not found in movies.")
+    
     likes_collection.update_one(
-        {"user_id": user_id, "tmdb_id": int(tmdb_id)},
-        {"$set": {"user_id": user_id, "tmdb_id": int(tmdb_id)}},
+        {"user_id": user_id, "tmdb_id": tmdb_id},
+        {"$set": {"user_id": user_id, "tmdb_id": tmdb_id}},
         upsert=True
     )
 
     load_likes_from_db()
-    return f"👍 User {user_id} liked '{movie_title}'"
+    title = movies_df[movies_df["tmdb_id"] == tmdb_id].iloc[0]["title"]
+    return f"👍 User {user_id} liked '{title}'"
 
 
 # ---------------------------
 # Dislike a movie
 # ---------------------------
 
-def dislike_movie(user_id, movie_title):
-    match = movies_df[movies_df["title"].str.lower() == movie_title.lower()]
-    if match.empty:
-        raise ValueError(f"Movie '{movie_title}' not found.")
-
-    tmdb_id = match.iloc[0]["tmdb_id"]
-
-    result = likes_collection.delete_one({
-        "user_id": user_id,
-        "tmdb_id": int(tmdb_id)
-    })
-
+def dislike_movie(user_id, tmdb_id, movie_title=None):
+    result = likes_collection.delete_one({"user_id": user_id, "tmdb_id": tmdb_id})
+    
     if result.deleted_count == 0:
-        raise ValueError(f"No like found for user {user_id} and movie '{movie_title}'")
+        raise ValueError(f"No like found for user {user_id} and tmdb_id {tmdb_id}")
+    
+    load_likes_from_db()
+    title = movies_df[movies_df["tmdb_id"] == tmdb_id].iloc[0]["title"]
+    return f"👎 User {user_id} disliked '{title}'"
 
-    load_likes_from_db()  # Rebuild encoder and interactions
-    return f"👎 User {user_id} disliked '{movie_title}'"
 
 
 # ---------------------------
@@ -133,10 +124,34 @@ def recommend_hybrid(user_id, n=10):
         item_features=item_features_sparse
     )
 
-    top_items = np.argsort(-scores)[:n]
-    tmdb_ids = movie_enc.inverse_transform(top_items)
+    # Get tmdb_ids of movies the user has already liked
+    liked_entries = list(likes_collection.find({"user_id": user_id}))
+    liked_tmdb_ids = set(entry["tmdb_id"] for entry in liked_entries)
 
-    return movies_df[movies_df["tmdb_id"].isin(tmdb_ids)][["title", "genres"]].reset_index(drop=True)
+    # Filter out liked movies
+    all_tmdb_ids = movie_enc.inverse_transform(np.arange(len(scores)))
+    mask = np.array([tmdb_id not in liked_tmdb_ids for tmdb_id in all_tmdb_ids])
+
+    filtered_scores = scores[mask]
+    filtered_tmdb_ids = all_tmdb_ids[mask]
+
+    if len(filtered_scores) == 0:
+        return pd.DataFrame(columns=["tmdb_id", "title", "genres", "poster_path", "score", "release_date", "overview"])
+
+    top_indices = np.argsort(-filtered_scores)[:n]
+    top_tmdb_ids = filtered_tmdb_ids[top_indices]
+    top_scores = filtered_scores[top_indices]
+
+    # Extract movie info and attach scores
+    movie_info = movies_df[movies_df["tmdb_id"].isin(top_tmdb_ids)].copy()
+    movie_info["score"] = movie_info["tmdb_id"].map(dict(zip(top_tmdb_ids, top_scores)))
+    movie_info = movie_info.sort_values(by="score", ascending=False)
+
+    return movie_info[["tmdb_id", "title", "genres", "poster_path", "score", "release_date", "overview"]]
+
+
+
+
 
 # ---------------------------
 # Automatically retrain on startup
@@ -150,3 +165,4 @@ if likes_data:
         print("⚠️ Error during model training:", str(e))
 else:
     print("ℹ️ No likes found on startup — model not trained.")
+

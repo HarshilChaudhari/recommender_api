@@ -8,11 +8,20 @@ import pickle
 import pandas as pd
 import jwt
 import os
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="🎬 Movie Recommender API",
     description="Hybrid recommendation system using FastAPI + LightFM + MongoDB",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fd1b2d22ccf1b78d895b82d435671359bd2404ada60e8548cf71fa96fb998988")
@@ -58,8 +67,9 @@ def root():
 @app.post("/like")
 def like(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     try:
-        result = like_movie(user_id, req.movie_title)
+        result = like_movie(user_id, req.tmdb_id, req.movie_title)  # ✅ use tmdb_id
         background_tasks.add_task(train_model)
+        
         return {"message": result}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -70,14 +80,13 @@ def like(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Dep
 @app.post("/dislike")
 def dislike(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     try:
-        result = dislike_movie(user_id, req.movie_title)
+        result = dislike_movie(user_id, req.tmdb_id, req.movie_title)  # ✅ use tmdb_id
         background_tasks.add_task(train_model)
         return {"message": result}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
-
 
 
 @app.post("/train")
@@ -91,7 +100,7 @@ def train():
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
 
-@app.get("/recommend", response_model=List[RecommendResponse])
+@app.get("/recommend")
 def recommend(user_id: str = Depends(get_current_user)):
     try:
         df = recommend_hybrid(user_id)
@@ -108,7 +117,7 @@ def get_popular_movies(n: int = 20):
         top_movies = movies_df.sort_values(
             by=["vote_count", "vote_average"],
             ascending=False
-        ).head(n)[["title", "genres"]]
+        ).head(n)[["title", "genres", "poster_path", "release_date", "overview", "tmdb_id"]]
         return top_movies.reset_index(drop=True).to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
@@ -118,7 +127,7 @@ def get_popular_movies(n: int = 20):
 def search_movies(
     query: str = Query(..., min_length=2),
     scope: str = Query("all", regex="^(all|liked|recommended)$"),
-    user_id: str = Depends(get_current_user) if "liked" or "recommended" else None
+    user_id: str = Depends(get_current_user)
 ):
     try:
         if scope == "all":
@@ -133,7 +142,7 @@ def search_movies(
             results = df[df["title"].str.contains(query, case=False, na=False)]
         else:
             raise HTTPException(status_code=400, detail="Invalid scope")
-        return results[["title", "genres"]].head(20).reset_index(drop=True).to_dict(orient="records")
+        return results[["title", "genres", "poster_path","release_date", "overview", "tmdb_id"]].head(20).reset_index(drop=True).to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
@@ -147,7 +156,12 @@ def get_all_movies(
         start = (page - 1) * page_size
         end = start + page_size
         total = len(movies_df)
-        movies = movies_df.iloc[start:end][["title", "genres"]].reset_index(drop=True).to_dict(orient="records")
+
+        # Sort by popularity (vote_count) and then by latest release
+        sorted_df = movies_df.sort_values(by=["vote_count", "release_date"], ascending=[False, False])
+
+        movies = sorted_df.iloc[start:end][["title", "genres", "poster_path", "release_date", "overview", "tmdb_id"]].reset_index(drop=True).to_dict(orient="records")
+
         return {
             "movies": movies,
             "total": total,
@@ -158,14 +172,14 @@ def get_all_movies(
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
 
+
 @app.get("/liked")
 def get_liked_movies(user_id: str = Depends(get_current_user)):
     try:
-        # Get all liked tmdb_ids for the user
         liked_entries = list(likes_collection.find({"user_id": user_id}))
         liked_tmdb_ids = [entry["tmdb_id"] for entry in liked_entries]
-        # Get movie details for these tmdb_ids
-        liked_movies = movies_df[movies_df["tmdb_id"].isin(liked_tmdb_ids)][["title", "genres"]].reset_index(drop=True)
+        liked_movies = movies_df[movies_df["tmdb_id"].isin(liked_tmdb_ids)][["title", "genres", "poster_path", "release_date", "overview", "tmdb_id"]].reset_index(drop=True)
         return liked_movies.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
