@@ -16,6 +16,8 @@ export default function HomePage() {
   const [searchResults, setSearchResults] = useState(null);
   const router = useRouter();
 
+  const pageSize = 20; // Feel free to adjust
+
   useEffect(() => {
     const token = Cookies.get('token');
     if (!token) {
@@ -23,27 +25,28 @@ export default function HomePage() {
       return;
     }
 
-    if (searchQuery) return; // Don't fetch normal data if searching
+    if (searchQuery) return; // Skip fetching when searching
 
     setLoading(true);
     setError('');
-    let fetchFn;
+
+    let fetchUrl;
     if (activeTab === 'all') {
-      fetchFn = () => fetchWithAuth(`/movies?page=${page}`);
+      fetchUrl = `/movies?page=${page}`;
     } else if (activeTab === 'liked') {
-      fetchFn = () => fetchWithAuth('/liked');
+      fetchUrl = `/liked?page=${page}&page_size=${pageSize}`;
     } else if (activeTab === 'recommended') {
-      fetchFn = () => fetchWithAuth('/recommend');
+      fetchUrl = `/recommend?page=${page}&page_size=${pageSize}`;
     }
 
-    fetchFn()
+    fetchWithAuth(fetchUrl)
       .then(data => {
         if (activeTab === 'all') setAllMovies(data.movies || []);
-        if (activeTab === 'liked') setLikedMovies(data);
-        if (activeTab === 'recommended') setRecommendedMovies(data);
+        if (activeTab === 'liked') setLikedMovies(data.movies || []);
+        if (activeTab === 'recommended') setRecommendedMovies(data.movies || []);
         setLoading(false);
       })
-      .catch(e => {
+      .catch(() => {
         setError('Failed to load movies');
         setLoading(false);
       });
@@ -64,7 +67,7 @@ export default function HomePage() {
         `/search?query=${encodeURIComponent(searchQuery)}&scope=${activeTab}`
       );
       setSearchResults(results);
-    } catch (e) {
+    } catch {
       setError('Search failed');
     }
     setLoading(false);
@@ -95,15 +98,13 @@ export default function HomePage() {
         method: 'POST',
         body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
       });
-      // Refresh liked movies after disliking
-      const updatedLiked = await fetchWithAuth('/liked');
-      setLikedMovies(updatedLiked);
-      // Optionally, refresh recommendations as well
+      const updatedLiked = await fetchWithAuth(`/liked?page=1&page_size=${pageSize}`);
+      setLikedMovies(updatedLiked.movies || []);
       if (activeTab === 'recommended') {
-        const updatedRecommended = await fetchWithAuth('/recommend');
-        setRecommendedMovies(updatedRecommended);
+        const updatedRecommended = await fetchWithAuth(`/recommend?page=1&page_size=${pageSize}`);
+        setRecommendedMovies(updatedRecommended.movies || []);
       }
-    } catch (e) {
+    } catch {
       setError('Failed to dislike movie');
     }
     setLoading(false);
@@ -118,21 +119,18 @@ export default function HomePage() {
         method: 'POST',
         body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
       });
-      // Refresh liked movies after liking
-      const updatedLiked = await fetchWithAuth('/liked');
-      setLikedMovies(updatedLiked);
-      // Optionally, refresh recommendations as well
+      const updatedLiked = await fetchWithAuth(`/liked?page=1&page_size=${pageSize}`);
+      setLikedMovies(updatedLiked.movies || []);
       if (activeTab === 'recommended') {
-        const updatedRecommended = await fetchWithAuth('/recommend');
-        setRecommendedMovies(updatedRecommended);
+        const updatedRecommended = await fetchWithAuth(`/recommend?page=1&page_size=${pageSize}`);
+        setRecommendedMovies(updatedRecommended.movies || []);
       }
-    } catch (e) {
+    } catch {
       setError('Failed to like movie');
     }
     setLoading(false);
   };
 
-  // Choose which list to display
   let displayList = [];
   if (searchResults !== null) {
     displayList = searchResults;
@@ -146,14 +144,15 @@ export default function HomePage() {
 
   return (
     <div>
+      {/* Navigation */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
         <button onClick={() => { setActiveTab('all'); setPage(1); handleClearSearch(); }} style={{ fontWeight: activeTab === 'all' ? 'bold' : 'normal' }}>
           All Movies
         </button>
-        <button onClick={() => { setActiveTab('liked'); handleClearSearch(); }} style={{ fontWeight: activeTab === 'liked' ? 'bold' : 'normal' }}>
+        <button onClick={() => { setActiveTab('liked'); setPage(1); handleClearSearch(); }} style={{ fontWeight: activeTab === 'liked' ? 'bold' : 'normal' }}>
           Liked Movies
         </button>
-        <button onClick={() => { setActiveTab('recommended'); handleClearSearch(); }} style={{ fontWeight: activeTab === 'recommended' ? 'bold' : 'normal' }}>
+        <button onClick={() => { setActiveTab('recommended'); setPage(1); handleClearSearch(); }} style={{ fontWeight: activeTab === 'recommended' ? 'bold' : 'normal' }}>
           Recommended Movies
         </button>
         <button onClick={handleLogout} style={{ marginLeft: 'auto' }}>Logout</button>
@@ -179,72 +178,46 @@ export default function HomePage() {
       {loading && <div>Loading...</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-        {activeTab === 'liked' ? (
-          <div>
-            <h2>Liked Movies</h2>
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {displayList.map((movie, idx) => (
-                <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
-                  <img
-                    src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
-                    alt={movie.title}
-                    style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
-                  />
-                  <div>
-                    <strong>{movie.title}</strong> – {movie.genres.join(', ')}
-                  <div><em>Release Date:</em> {movie.release_date}</div>
-                  <div style={{ maxWidth: '400px' }}>{movie.overview}</div>
-                  {activeTab === 'recommended' && movie.score !== undefined && (
-                    <div>Score: {movie.score.toFixed(3)}</div>
-                  )}
-                    <div>
-                      <button onClick={() => handleDislike(movie)} style={{ marginTop: '0.5rem' }}>
-                        Dislike
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {displayList.map((movie, idx) => (
-            <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
-              <img
-                src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
-                alt={movie.title}
-                style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
-              />
-              <div>
-                <strong>{movie.title}</strong> – {movie.genres.join(', ')}
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {displayList.map((movie, idx) => (
+          <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+            <img
+              src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+              alt={movie.title}
+              style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
+            />
+            <div>
+              <strong>{movie.title}</strong> – {movie.genres.join(', ')}
               <div><em>Release Date:</em> {movie.release_date}</div>
               <div style={{ maxWidth: '400px' }}>{movie.overview}</div>
-              {activeTab === 'recommended' && movie.score !== undefined && (
+              {movie.score !== undefined && (
                 <div>Score: {movie.score.toFixed(3)}</div>
               )}
-                
-                {(activeTab === 'all' || activeTab === 'recommended') && (
-                  <div>
-                    <button onClick={() => handleLike(movie)} style={{ marginTop: '0.5rem' }}>
-                      Like
-                    </button>
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+              {activeTab !== 'liked' && (
+                <div>
+                  <button onClick={() => handleLike(movie)} style={{ marginTop: '0.5rem' }}>
+                    Like
+                  </button>
+                </div>
+              )}
+              {activeTab === 'liked' && (
+                <div>
+                  <button onClick={() => handleDislike(movie)} style={{ marginTop: '0.5rem' }}>
+                    Dislike
+                  </button>
+                </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
 
-      )}
-
-      {/* Pagination for All Movies */}
-      {activeTab === 'all' && searchResults === null && (
+      {/* Pagination */}
+      {searchResults === null && (
         <div>
-          <button onClick={() => setPage(page => Math.max(1, page - 1))} disabled={page === 1}>Previous</button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</button>
           <span> Page {page} </span>
-          <button onClick={() => setPage(page => page + 1)}>Next</button>
+          <button onClick={() => setPage(p => p + 1)}>Next</button>
         </div>
       )}
     </div>
