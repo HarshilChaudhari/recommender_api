@@ -218,8 +218,8 @@ def search_movies_endpoint( # Renamed to avoid conflict with imported recommende
             scope=scope,
             page=page,
             page_size=page_size,
-            movies_df=movies_df, # Pass movies_df
-            user_id=user_id # Pass user_id
+           # movies_df=movies_df, # Pass movies_df
+           # user_id=user_id # Pass user_id
         )
         return search_results
     except ValueError as e:
