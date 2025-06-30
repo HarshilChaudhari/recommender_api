@@ -9,3 +9,4 @@ client = MongoClient(MONGO_URI)
 db = client.movie_recommender
 likes_collection = db.likes
 users_collection = db.users
+dislikes_collection = db.dislikes

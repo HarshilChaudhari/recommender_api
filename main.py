@@ -6,7 +6,7 @@ from recommender import (
 )
 from models import LikeRequest, UserSignup, UserLogin
 from utils.auth_utils import hash_password, verify_password, get_current_user
-from db import users_collection, likes_collection
+from db import users_collection, likes_collection, dislikes_collection 
 import pickle
 import pandas as pd
 import jwt
@@ -84,6 +84,42 @@ def dislike(req: LikeRequest, background_tasks: BackgroundTasks, user_id: str = 
         return {"message": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+@app.post("/undislike")
+def undislike(req: LikeRequest, user_id: str = Depends(get_current_user)):
+    from db import dislikes_collection
+    try:
+        result = dislikes_collection.delete_one({"user_id": user_id, "tmdb_id": req.tmdb_id})
+        if result.deleted_count == 0:
+            raise ValueError(f"No dislike found for user {user_id} and tmdb_id {req.tmdb_id}")
+        return {"message": f"🗑️ Removed dislike for {req.movie_title}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+@app.get("/disliked")
+def get_disliked_movies(
+    user_id: str = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=1000)
+):
+    try:
+        from db import dislikes_collection
+        entries = list(dislikes_collection.find({"user_id": user_id}))
+        tmdb_ids = [entry["tmdb_id"] for entry in entries]
+        movies = movies_df[movies_df["tmdb_id"].isin(tmdb_ids)]
+        total = len(movies)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_df = movies.iloc[start:end].astype(object)
+        return {
+            "movies": paginated_df[["title", "genres", "poster_path", "release_date", "overview", "tmdb_id"]].to_dict(orient="records"),
+            "total": total,
+            "page": page,
+            "page_size": page_size
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
 
 @app.post("/train")
 def train():
@@ -172,7 +208,7 @@ def get_all_movies(
 def get_liked_movies(
     user_id: str = Depends(get_current_user),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page_size: int = Query(20, ge=1, le=1000)
 ):
     try:
         liked_entries = list(likes_collection.find({"user_id": user_id}))
@@ -194,5 +230,6 @@ def get_liked_movies(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
 
 
