@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pymongo
 scikit-learn
-lightfm
+passlib
 pandas
 numpy
 sentence-transformers
