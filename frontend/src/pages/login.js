@@ -3,13 +3,21 @@ import { useRouter } from 'next/router';
 import Cookies from 'js-cookie';
 import Link from 'next/link';
 
+// Import local CSS module
+import styles from './login.module.css'; // Make sure this path is correct
+
 export default function LoginPage() {
   const [user_id, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState(''); // State for error messages
+  const [loading, setLoading] = useState(false); // State for loading
   const router = useRouter();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError(''); // Clear previous errors
+    setLoading(true); // Set loading state
+
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
         method: 'POST',
@@ -18,45 +26,63 @@ export default function LoginPage() {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.detail);
+        const errorData = await res.json();
+        // Use error.detail from FastAPI if available, otherwise generic message
+        throw new Error(errorData.detail || 'Authentication failed. Please check your credentials.');
       }
 
       const data = await res.json();
-      Cookies.set('token', data.token);
-      router.push('/home');
+      Cookies.set('token', data.token, { expires: 7 }); // Set cookie to expire in 7 days
+      router.push('/home'); // Redirect on successful login
     } catch (err) {
-      alert('Login failed: ' + err + user_id + password);
+      setError(err.message || 'An unexpected error occurred during login.');
+    } finally {
+      setLoading(false); // Clear loading state
     }
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '400px', margin: 'auto' }}>
+    <div className={styles.loginContainer}>
       <h2>Login</h2>
-      <form onSubmit={handleLogin}>
-        <input
-          type="text"
-          placeholder="Username"
-          value={user_id}
-          onChange={(e) => setUserId(e.target.value)}
-          required
-          style={{ display: 'block', marginBottom: '1rem', width: '100%' }}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={{ display: 'block', marginBottom: '1rem', width: '100%' }}
-        />
-        <button type="submit" style={{ width: '100%' }}>Login</button>
+      <form onSubmit={handleLogin} className={styles.loginForm}>
+        {error && <p className={styles.errorMessage}>{error}</p>} {/* Display error message */}
+        <div className={styles.inputGroup}>
+          <input
+            type="text"
+            placeholder="Username"
+            value={user_id}
+            onChange={(e) => setUserId(e.target.value)}
+            required
+            className={styles.inputField}
+            aria-label="Username"
+          />
+        </div>
+        <div className={styles.inputGroup}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className={styles.inputField}
+            aria-label="Password"
+          />
+        </div>
+        <button 
+          type="submit" 
+          className={styles.loginButton} 
+          disabled={loading} // Disable button when loading
+        >
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
       </form>
 
-      <p style={{ marginTop: '1rem' }}>
-        Don't have an account? <Link href="/signup">Sign up</Link>
+      <p className={styles.signupText}>
+        Don't have an account? {' '}
+        <Link href="/signup" className={styles.signupLink}>
+          Sign up
+        </Link>
       </p>
     </div>
   );
 }
-

@@ -1,0 +1,504 @@
+/* home.module.css */
+
+:root {
+  --primary-bg-color: #1a202c; /* Dark background */
+  --secondary-bg-color: #2d3748; /* Slightly lighter for cards, forms, etc. */
+  --text-color-light: #e2e8f0; /* Light text for dark backgrounds */
+  --text-color-muted: #a0aec0; /* Muted text for details */
+  --accent-color-blue: #63b3ed; /* Primary accent for buttons, links */
+  --border-color: #4a5568; /* Subtle borders */
+  --input-bg-color: #2d3748; /* Input background */
+  --input-focus-border: #4299e1; /* Input focus border */
+  --button-hover-bg: #4299e1; /* Button hover effect */
+  --button-active-bg: #3182ce; /* Button active effect */
+  --error-color: #ef4444; /* Red for error messages */
+  --success-color: #48bb78; /* Green for success messages */
+  --link-hover-color: #90cdf4; /* Lighter blue for link hover */
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--primary-bg-color);
+  color: var(--text-color-light);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap; /* Allow wrapping on smaller screens */
+}
+
+.navTabs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap; /* Allow tabs to wrap */
+}
+
+.navButton {
+  background-color: var(--secondary-bg-color);
+  color: var(--text-color-light);
+  border: 1px solid var(--border-color);
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.navButton:hover {
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: white;
+}
+
+.navButton.active {
+  background-color: var(--accent-color-blue);
+  border-color: var(--accent-color-blue);
+  color: white;
+  font-weight: 600;
+}
+
+.logoutButton {
+  background-color: #ef4444; /* Red for logout */
+  color: white;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.logoutButton:hover {
+  background-color: #dc2626; /* Darker red on hover */
+}
+
+.searchForm {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.searchInput {
+  flex-grow: 1;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--input-bg-color);
+  color: var(--text-color-light);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchInput::placeholder {
+  color: var(--text-color-muted);
+}
+
+.searchInput:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.3);
+}
+
+.searchButton,
+.clearSearchButton {
+  background-color: var(--accent-color-blue);
+  color: white;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.clearSearchButton {
+  background-color: var(--secondary-bg-color);
+  border: 1px solid var(--border-color);
+}
+
+.searchButton:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.clearSearchButton:hover {
+  background-color: var(--border-color);
+}
+
+.loadingMessage,
+.errorMessage {
+  text-align: center;
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-color-muted);
+}
+
+.errorMessage {
+  color: var(--error-color);
+}
+
+.movieList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* Adjusted minmax for better spacing */
+  gap: 1.5rem; /* Space between movies */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.movieItem {
+  background-color: var(--secondary-bg-color);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  display: flex; /* Use flex for poster and details side-by-side */
+  flex-direction: column; /* Stack them for smaller screens, or keep for larger */
+  cursor: pointer; /* Indicate clickable */
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  height: 100%; /* Ensure all items in a row are same height */
+}
+
+.movieItem:hover {
+  transform: translateY(-5px); /* Lift effect on hover */
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+.moviePoster {
+  width: 100%; /* Fill movie item width */
+  height: 350px; /* Fixed height for consistent posters */
+  object-fit: cover; /* Cover the area, cropping if necessary */
+  border-bottom: 1px solid var(--border-color);
+}
+
+.movieDetails {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1; /* Allow details to take remaining space */
+}
+
+.movieDetails strong {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: var(--accent-color-blue);
+}
+
+.movieDetails p,
+.movieDetails div {
+  font-size: 0.9rem;
+  color: var(--text-color-muted);
+  margin-bottom: 0.4rem;
+}
+
+.movieDetailsEm {
+  color: var(--text-color-light);
+  font-weight: 500;
+}
+
+.movieOverview {
+  display: -webkit-box;
+  -webkit-line-clamp: 3; /* Limit overview to 3 lines for brevity in card */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.5rem;
+  flex-grow: 1; /* Allow overview to expand if needed */
+}
+
+.movieScore {
+  margin-top: 0.5rem;
+  font-weight: 500;
+  color: var(--text-color-light);
+}
+
+.movieActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  justify-content: flex-end; /* Align buttons to the right */
+}
+
+.actionButton {
+  background-color: var(--accent-color-blue);
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+.actionButton:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.statusLiked {
+  background-color: var(--success-color);
+  color: white;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.statusDisliked {
+  background-color: var(--error-color);
+  color: white;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.paginationButton {
+  background-color: var(--secondary-bg-color);
+  color: var(--text-color-light);
+  border: 1px solid var(--border-color);
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.paginationButton:hover:not(:disabled) {
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: white;
+}
+
+.paginationButton:disabled {
+  background-color: var(--border-color);
+  color: var(--text-color-muted);
+  cursor: not-allowed;
+}
+
+.paginationButton.activePage {
+  background-color: var(--accent-color-blue);
+  border-color: var(--accent-color-blue);
+  color: white;
+  font-weight: 600;
+}
+
+.pageEllipsis {
+  color: var(--text-color-muted);
+  font-size: 1.1rem;
+  padding: 0.5rem;
+}
+
+
+/* --- Modal Styles --- */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75); /* Dark semi-transparent background */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000; /* Ensure it's above everything else */
+  backdrop-filter: blur(5px); /* Soft blur effect */
+}
+
+.modalContent {
+  background-color: var(--secondary-bg-color);
+  border-radius: 12px;
+  padding: 2.5rem;
+  max-width: 800px; /* Wider modal for details */
+  width: 90%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  position: relative;
+  display: flex; /* Flexbox for movie details inside modal */
+  gap: 2rem; /* Space between poster and text */
+  animation: fadeInScale 0.3s ease-out; /* Simple entry animation */
+  overflow-y: auto; /* Enable scrolling for long content */
+  max-height: 90vh; /* Max height to prevent overflow on small screens */
+}
+
+.modalCloseButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: var(--text-color-light);
+  font-size: 1.8rem;
+  cursor: pointer;
+  line-height: 1; /* Remove extra space below icon */
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.modalCloseButton:hover {
+  color: var(--accent-color-blue);
+  transform: rotate(90deg); /* Little spin on close */
+}
+
+.modalMoviePoster {
+  width: 250px; /* Larger poster in modal */
+  height: auto;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0; /* Don't shrink poster */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.modalMovieDetails {
+  flex-grow: 1; /* Allow details to take remaining space */
+  display: flex;
+  flex-direction: column;
+}
+
+.modalMovieDetails h3 {
+  color: var(--accent-color-blue);
+  font-size: 2.2rem;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  line-height: 1.2;
+}
+
+.modalMovieDetails div {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.modalMovieDetails p {
+  font-size: 1rem;
+  color: var(--text-color-light);
+  margin-top: 1rem;
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+
+.modalDetailsEm {
+  font-weight: 600;
+  color: var(--text-color-muted);
+}
+
+/* Animations */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Media queries for responsiveness */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .navTabs {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .logoutButton {
+    align-self: flex-end; /* Position logout button to the right */
+  }
+
+  .searchForm {
+    flex-direction: column;
+  }
+
+  .searchInput,
+  .searchButton,
+  .clearSearchButton {
+    width: 100%;
+  }
+
+  .movieList {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); /* Smaller cards */
+  }
+
+  .moviePoster {
+    height: 300px; /* Adjusted poster height for smaller cards */
+  }
+
+  .movieItem {
+    flex-direction: column; /* Stack poster and details in card */
+  }
+
+  .movieDetails strong {
+    font-size: 1.1rem;
+  }
+
+  /* Modal responsiveness */
+  .modalContent {
+    flex-direction: column; /* Stack poster and details in modal */
+    padding: 1.5rem;
+    gap: 1.5rem;
+  }
+
+  .modalMoviePoster {
+    width: 100%; /* Full width poster in stacked modal */
+    max-width: 200px; /* Limit max width for a less stretched look */
+    margin: 0 auto; /* Center the poster */
+  }
+
+  .modalMovieDetails h3 {
+    font-size: 1.8rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .navButton,
+  .logoutButton,
+  .searchButton,
+  .clearSearchButton {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .movieList {
+    grid-template-columns: 1fr; /* Single column on very small screens */
+  }
+}

@@ -1,0 +1,153 @@
+/* signup.module.css */
+
+:root {
+  --primary-bg-color: #1a202c; /* Dark background */
+  --secondary-bg-color: #2d3748; /* Slightly lighter for cards, forms, etc. */
+  --text-color-light: #e2e8f0; /* Light text for dark backgrounds */
+  --text-color-muted: #a0aec0; /* Muted text for details */
+  --accent-color-blue: #63b3ed; /* Primary accent for buttons, links */
+  --border-color: #4a5568; /* Subtle borders */
+  --input-bg-color: #2d3748; /* Input background */
+  --input-focus-border: #4299e1; /* Input focus border */
+  --button-hover-bg: #4299e1; /* Button hover effect */
+  --button-active-bg: #3182ce; /* Button active effect */
+  --error-color: #ef4444; /* Red for error messages */
+  --success-color: #48bb78; /* Green for success messages */
+  --link-hover-color: #90cdf4; /* Lighter blue for link hover */
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--primary-bg-color);
+  color: var(--text-color-light);
+  line-height: 1.6;
+  display: flex; /* Use flexbox for centering */
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Full viewport height */
+}
+
+.signupContainer {
+  background-color: var(--secondary-bg-color);
+  padding: 2.5rem 2rem;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  max-width: 450px; /* Consistent width with login */
+  width: 90%; /* Responsive width */
+  text-align: center;
+}
+
+.signupContainer h2 {
+  color: var(--accent-color-blue);
+  margin-bottom: 2rem;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.signupForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem; /* More space between inputs */
+}
+
+.inputGroup {
+  position: relative;
+  width: 100%;
+}
+
+.inputField {
+  width: calc(100% - 2rem); /* Account for padding */
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--input-bg-color);
+  color: var(--text-color-light);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.inputField::placeholder {
+  color: var(--text-color-muted);
+}
+
+.inputField:focus {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.3); /* Soft blue glow on focus */
+}
+
+.signupButton {
+  width: 100%;
+  padding: 0.9rem 1.5rem;
+  background-color: var(--accent-color-blue);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+  margin-top: 1rem;
+}
+
+.signupButton:hover {
+  background-color: var(--button-hover-bg);
+  transform: translateY(-2px); /* Slight lift on hover */
+}
+
+.signupButton:active {
+  background-color: var(--button-active-bg);
+  transform: translateY(0);
+}
+
+.loginText {
+  margin-top: 1.75rem;
+  font-size: 1rem;
+  color: var(--text-color-muted);
+}
+
+.loginLink {
+  color: var(--accent-color-blue);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease-in-out;
+}
+
+.loginLink:hover {
+  color: var(--link-hover-color);
+  text-decoration: underline;
+}
+
+.errorMessage {
+  color: var(--error-color);
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  text-align: left; /* Align error message to left within the form */
+  padding-left: 0.5rem;
+}
+
+.successMessage {
+  color: var(--success-color);
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  text-align: left; /* Align success message to left within the form */
+  padding-left: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .signupContainer {
+    padding: 2rem 1.5rem;
+  }
+
+  .signupContainer h2 {
+    font-size: 1.75rem;
+  }
+
+  .inputField,
+  .signupButton {
+    font-size: 0.95rem;
+    padding: 0.8rem 1rem;
+  }
+}

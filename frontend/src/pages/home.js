@@ -1,45 +1,256 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Cookies from 'js-cookie';
+
+import styles from './home.module.css';
+
 import { fetchWithAuth } from '../utils/api';
 import { jwtDecode } from 'jwt-decode';
 
-export default function HomePage() {
-  const [activeTab, setActiveTab] = useState('all');
+// --- Constants ---
+const PAGE_SIZE = 10;
+const INITIAL_PAGE = 1;
+const PAGE_RANGE = 2; // Number of pages to show around the current page
+
+// --- Helper Functions ---
+
+const getUserIdFromToken = () => {
+  const token = Cookies.get('token');
+  if (!token) return null;
+  try {
+    return jwtDecode(token).user_id;
+  } catch (error) {
+    console.error("Error decoding token:", error);
+    return null;
+  }
+};
+
+/**
+ * Fetches data for a specific movie category.
+ * @param {string} endpoint - The API endpoint (e.g., '/movies', '/liked').
+ * @param {number} page - The current page number.
+ * @param {number} pageSize - The number of items per page.
+ * @param {string} [query=''] - Search query (optional).
+ * @param {string} [scope='all'] - Search scope (optional).
+ * @returns {Promise<{movies: Array, total_results: number, total_pages: number}>} A promise that resolves to an object with movies, total_results, and total_pages.
+ */
+const fetchMoviesByCategory = async (endpoint, page, pageSize = PAGE_SIZE, query = '', scope = 'all') => {
+  try {
+    let url = `${endpoint}?page=${page}&page_size=${pageSize}`;
+    if (endpoint === '/search' && query) {
+        url += `&query=${encodeURIComponent(query)}&scope=${encodeURIComponent(scope)}`;
+    }
+    const data = await fetchWithAuth(url);
+    
+    const movies = data.movies || [];
+    const total_results = data.total_results || 0;
+    const total_pages = data.total_pages || 1; 
+
+    return { movies, total_results, total_pages };
+  } catch (error) {
+    console.error(`Failed to fetch ${endpoint}:`, error);
+    throw new Error(`Failed to load ${endpoint.substring(1)} movies.`);
+  }
+};
+
+
+const handleMovieAction = async (actionEndpoint, movie) => {
+  const user_id = getUserIdFromToken();
+  if (!user_id) throw new Error("User not authenticated.");
+
+  await fetchWithAuth(actionEndpoint, {
+    method: 'POST',
+    body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
+  });
+};
+
+// --- Custom Hooks ---
+
+const useMovieLists = () => {
   const [allMovies, setAllMovies] = useState([]);
   const [likedMovies, setLikedMovies] = useState([]);
   const [dislikedMovies, setDislikedMovies] = useState([]);
   const [recommendedMovies, setRecommendedMovies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
+
+  const getMoviesByTab = useCallback((tab) => {
+    switch (tab) {
+      case 'all':
+        return allMovies;
+      case 'liked':
+        return likedMovies;
+      case 'recommended':
+        return recommendedMovies;
+      case 'disliked':
+        return dislikedMovies;
+      default:
+        return [];
+    }
+  }, [allMovies, likedMovies, recommendedMovies, dislikedMovies]);
+
+  return {
+    allMovies,
+    likedMovies,
+    dislikedMovies,
+    recommendedMovies,
+    loading,
+    setLoading,
+    error,
+    setError,
+    setLikedMovies,
+    setDislikedMovies,
+    setRecommendedMovies,
+    setAllMovies,
+    getMoviesByTab,
+  };
+};
+
+const useMovieSearch = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
-  const router = useRouter();
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
+  const [searchPage, setSearchPage] = useState(INITIAL_PAGE);
 
-  const pageSize = 20;
-
-  const getUserIdFromToken = () => {
-    const token = Cookies.get('token');
-    if (!token) return null;
-    try {
-      return jwtDecode(token).user_id;
-    } catch {
-      return null;
+  const handleSearch = useCallback(async (activeTab, setLoading, setError) => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      setSearchTotalPages(1);
+      return;
     }
-  };
 
-  const refreshAllData = async () => {
-    const [liked, disliked, recommended] = await Promise.all([
-      fetchWithAuth(`/liked?page=1&page_size=1000`),
-      fetchWithAuth(`/disliked?page=1&page_size=1000`),
-      fetchWithAuth(`/recommend?page=1&page_size=${pageSize}`)
-    ]);
-    setLikedMovies(liked.movies || []);
-    setDislikedMovies(disliked.movies || []);
-    setRecommendedMovies(recommended.movies || []);
-  };
+    setLoading(true);
+    setError('');
+    try {
+      const results = await fetchMoviesByCategory(
+        '/search',
+        searchPage,
+        PAGE_SIZE,
+        searchQuery,
+        activeTab
+      );
+      setSearchResults(results.movies);
+      setSearchTotalPages(results.total_pages);
+    } catch (error) {
+      setError('Search failed');
+      console.error("Search error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, searchPage]);
 
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearchTotalPages(1);
+    setSearchPage(INITIAL_PAGE);
+  }, []);
+
+  return {
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    setSearchResults,
+    searchTotalPages,
+    setSearchTotalPages,
+    searchPage,
+    setSearchPage,
+    handleSearch,
+    handleClearSearch,
+  };
+};
+
+// --- Movie Details Modal Component ---
+const MovieDetailsModal = ({ movie, onClose }) => {
+    if (!movie) return null;
+
+    return (
+        <div className={styles.modalOverlay} onClick={onClose}>
+            <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <button className={styles.modalCloseButton} onClick={onClose}>&times;</button>
+                <img
+                    src={movie.poster_path ? `https://image.tmdb.org/t/p/w300${movie.poster_path}` : 'https://via.placeholder.com/250x375?text=No+Poster'}
+                    alt={movie.title}
+                    className={styles.modalMoviePoster}
+                />
+                <div className={styles.modalMovieDetails}>
+                    <h3>{movie.title}</h3>
+                    <div><span className={styles.modalDetailsEm}>Genres:</span> {movie.genres?.join(', ') || 'N/A'}</div>
+                    <div><span className={styles.modalDetailsEm}>Release Date:</span> {movie.release_date || 'N/A'}</div>
+                    {movie.score !== undefined && <div><span className={styles.modalDetailsEm}>Recommendation Score:</span> {movie.score.toFixed(3)}</div>}
+                    <p>{movie.overview || 'No overview available.'}</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+export default function HomePage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState('all');
+  const [page, setPage] = useState(INITIAL_PAGE);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const {
+    allMovies,
+    likedMovies, // We need this state here to check if a movie is liked
+    dislikedMovies, // We need this state here to check if a movie is disliked
+    recommendedMovies,
+    loading,
+    setLoading,
+    error,
+    setError,
+    setLikedMovies,
+    setDislikedMovies,
+    setRecommendedMovies,
+    setAllMovies,
+    getMoviesByTab,
+  } = useMovieLists();
+
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    setSearchResults,
+    searchTotalPages,
+    setSearchTotalPages,
+    searchPage,
+    setSearchPage,
+    handleSearch,
+    handleClearSearch,
+  } = useMovieSearch();
+
+  // Helper to get current list and its total pages
+  const getCurrentDisplayData = useCallback(() => {
+    if (searchResults !== null) {
+      return { movies: searchResults, totalPages: searchTotalPages };
+    }
+    return { movies: getMoviesByTab(activeTab), totalPages: totalPages };
+  }, [searchResults, searchTotalPages, getMoviesByTab, activeTab, totalPages]);
+
+  // Fetches liked, disliked, and recommended movies for immediate display
+  const refreshAllData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [likedResponse, dislikedResponse] = await Promise.all([
+        fetchMoviesByCategory('/liked', INITIAL_PAGE, 1000), // Fetch all liked for quick lookup
+        fetchMoviesByCategory('/disliked', INITIAL_PAGE, 1000), // Fetch all disliked for quick lookup
+      ]);
+      setLikedMovies(likedResponse.movies);
+      setDislikedMovies(dislikedResponse.movies);
+    } catch (err) {
+      setError(err.message || 'Failed to refresh movie data.');
+    } finally {
+      setLoading(false);
+    }
+  }, [setLoading, setError, setLikedMovies, setDislikedMovies]);
+
+  // Effect for initial authentication check and main data fetching
   useEffect(() => {
     const token = Cookies.get('token');
     if (!token) {
@@ -47,187 +258,260 @@ export default function HomePage() {
       return;
     }
 
-    if (searchQuery) return;
-
     const fetchData = async () => {
       setLoading(true);
       setError('');
       try {
-        await refreshAllData(); // Fetch liked/disliked first
-        let fetchUrl = '';
-        if (activeTab === 'all') fetchUrl = `/movies?page=${page}`;
-        else if (activeTab === 'liked') fetchUrl = `/liked?page=${page}&page_size=${pageSize}`;
-        else if (activeTab === 'recommended') fetchUrl = `/recommend?page=${page}&page_size=${pageSize}`;
-        else if (activeTab === 'disliked') fetchUrl = `/disliked?page=${page}&page_size=${pageSize}`;
+        await refreshAllData(); 
 
-        const data = await fetchWithAuth(fetchUrl);
-        if (activeTab === 'all') setAllMovies(data.movies || []);
-        if (activeTab === 'liked') setLikedMovies(data.movies || []);
-        if (activeTab === 'recommended') setRecommendedMovies(data.movies || []);
-        if (activeTab === 'disliked') setDislikedMovies(data.movies || []);
-      } catch {
-        setError('Failed to load movies');
+        let fetchUrl = '';
+        
+        if (searchQuery) {
+          const searchResponse = await fetchMoviesByCategory(
+            '/search',
+            searchPage,
+            PAGE_SIZE,
+            searchQuery,
+            activeTab
+          );
+          setSearchResults(searchResponse.movies);
+          setSearchTotalPages(searchResponse.total_pages);
+          setLoading(false);
+          return;
+        }
+
+        if (activeTab === 'all') fetchUrl = `/movies`;
+        else if (activeTab === 'liked') fetchUrl = `/liked`;
+        else if (activeTab === 'recommended') fetchUrl = `/recommend`;
+        else if (activeTab === 'disliked') fetchUrl = `/disliked`;
+
+        const data = await fetchMoviesByCategory(fetchUrl, page, PAGE_SIZE);
+        if (activeTab === 'all') {
+          setAllMovies(data.movies);
+        } else if (activeTab === 'liked') {
+          setLikedMovies(data.movies);
+        } else if (activeTab === 'recommended') {
+          setRecommendedMovies(data.movies);
+        } else if (activeTab === 'disliked') {
+          setDislikedMovies(data.movies);
+        }
+        setTotalPages(data.total_pages);
+
+      } catch (err) {
+        setError(err.message || 'Failed to load movies.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [activeTab, page, router, searchQuery]);
+  }, [
+    activeTab,
+    page,
+    router,
+    searchQuery,
+    searchPage,
+    refreshAllData,
+    setLoading,
+    setError,
+    setAllMovies,
+    setLikedMovies,
+    setRecommendedMovies,
+    setDislikedMovies,
+    setSearchResults,
+    setSearchTotalPages,
+    totalPages
+  ]);
+
+  // Define isLiked and isDisliked inside HomePage where likedMovies and dislikedMovies are accessible
+  const isLiked = useCallback((tmdb_id) => likedMovies.some(m => m.tmdb_id === tmdb_id), [likedMovies]);
+  const isDisliked = useCallback((tmdb_id) => dislikedMovies.some(m => m.tmdb_id === tmdb_id), [dislikedMovies]);
+
+  // Handlers for movie actions (like/dislike/undo)
+  const handleMovieActionAndRefresh = useCallback(async (actionEndpoint, movie) => {
+    setLoading(true);
+    setError('');
+    try {
+      await handleMovieAction(actionEndpoint, movie);
+      await refreshAllData(); // Refresh all lists after action
+      
+      // After action, re-fetch the current active tab to update its view
+      const currentTabEndpoint = 
+        activeTab === 'all' ? '/movies' :
+        activeTab === 'liked' ? '/liked' :
+        activeTab === 'recommended' ? '/recommend' :
+        '/disliked';
+      
+      const data = await fetchMoviesByCategory(currentTabEndpoint, page, PAGE_SIZE);
+      if (activeTab === 'all') setAllMovies(data.movies);
+      else if (activeTab === 'liked') setLikedMovies(data.movies);
+      else if (activeTab === 'recommended') setRecommendedMovies(data.movies);
+      else if (activeTab === 'disliked') setDislikedMovies(data.movies);
+      setTotalPages(data.total_pages);
+    } catch (err) {
+      setError(err.message || `Failed to perform action: ${actionEndpoint}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [setLoading, setError, refreshAllData, activeTab, page, setAllMovies, setLikedMovies, setRecommendedMovies, setDislikedMovies, setTotalPages]);
 
 
-  const handleLogout = () => {
+  const handleLike = useCallback((movie) => handleMovieActionAndRefresh('/like', movie), [handleMovieActionAndRefresh]);
+  const handleDislike = useCallback((movie) => handleMovieActionAndRefresh('/dislike', movie), [handleMovieActionAndRefresh]);
+  const handleUndoDislike = useCallback((movie) => handleMovieActionAndRefresh('/undislike', movie), [handleMovieActionAndRefresh]);
+
+  const handleLogout = useCallback(() => {
     Cookies.remove('token');
     router.push('/login');
+  }, [router]);
+
+  const handleMovieClick = (movie) => {
+      setSelectedMovie(movie);
+      setIsModalOpen(true);
   };
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      const results = await fetchWithAuth(`/search?query=${encodeURIComponent(searchQuery)}&scope=${activeTab}`);
-      setSearchResults(results);
-    } catch {
-      setError('Search failed');
+  const handleCloseModal = () => {
+      setIsModalOpen(false);
+      setSelectedMovie(null);
+  };
+
+  const displayData = getCurrentDisplayData();
+  const currentMovies = displayData.movies;
+  const currentTotalPages = displayData.totalPages;
+  const currentPage = searchResults !== null ? searchPage : page;
+
+  // --- Pagination Logic ---
+  const renderPaginationButtons = () => {
+    const buttons = [];
+    const paginationSetPage = searchResults !== null ? setSearchPage : setPage;
+
+    const startPage = Math.max(INITIAL_PAGE, currentPage - PAGE_RANGE);
+    const endPage = Math.min(currentTotalPages, currentPage + PAGE_RANGE);
+
+    if (startPage > INITIAL_PAGE) {
+      buttons.push(
+        <button
+          key={INITIAL_PAGE}
+          className={styles.paginationButton}
+          onClick={() => paginationSetPage(INITIAL_PAGE)}
+        >
+          {INITIAL_PAGE}
+        </button>
+      );
+      if (startPage > INITIAL_PAGE + 1) {
+        buttons.push(<span key="ellipsis-start" className={styles.pageEllipsis}>...</span>);
+      }
     }
-    setLoading(false);
-  };
 
-  const handleClearSearch = () => {
-    setSearchQuery('');
-    setSearchResults(null);
-  };
-
-  const handleDislike = async (movie) => {
-    setLoading(true);
-    setError('');
-    try {
-      const user_id = getUserIdFromToken();
-      await fetchWithAuth('/dislike', {
-        method: 'POST',
-        body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
-      });
-      await refreshAllData();
-    } catch {
-      setError('Failed to dislike movie');
+    for (let i = startPage; i <= endPage; i++) {
+      buttons.push(
+        <button
+          key={i}
+          className={`${styles.paginationButton} ${i === currentPage ? styles.activePage : ''}`}
+          onClick={() => paginationSetPage(i)}
+        >
+          {i}
+        </button>
+      );
     }
-    setLoading(false);
-  };
 
-  const handleLike = async (movie) => {
-    setLoading(true);
-    setError('');
-    try {
-      const user_id = getUserIdFromToken();
-      await fetchWithAuth('/like', {
-        method: 'POST',
-        body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
-      });
-      await refreshAllData();
-    } catch {
-      setError('Failed to like movie');
+    if (endPage < currentTotalPages) {
+      if (endPage < currentTotalPages - 1) {
+        buttons.push(<span key="ellipsis-end" className={styles.pageEllipsis}>...</span>);
+      }
+      buttons.push(
+        <button
+          key={currentTotalPages}
+          className={styles.paginationButton}
+          onClick={() => paginationSetPage(currentTotalPages)}
+        >
+          {currentTotalPages}
+        </button>
+      );
     }
-    setLoading(false);
+
+    return buttons;
   };
 
-  const handleUndoDislike = async (movie) => {
-    setLoading(true);
-    setError('');
-    try {
-      const user_id = getUserIdFromToken();
-      await fetchWithAuth('/undislike', {
-        method: 'POST',
-        body: JSON.stringify({ user_id, movie_title: movie.title, tmdb_id: movie.tmdb_id }),
-      });
-      await refreshAllData();
-    } catch {
-      setError('Failed to undo dislike');
-    }
-    setLoading(false);
-  };
-
-  const getDisplayList = () => {
-    if (searchResults !== null) return searchResults;
-    if (activeTab === 'all') return allMovies;
-    if (activeTab === 'liked') return likedMovies;
-    if (activeTab === 'recommended') return recommendedMovies;
-    if (activeTab === 'disliked') return dislikedMovies;
-    return [];
-  };
-
-  const isLiked = (tmdb_id) => likedMovies.some(m => m.tmdb_id === tmdb_id);
-  const isDisliked = (tmdb_id) => dislikedMovies.some(m => m.tmdb_id === tmdb_id);
 
   return (
-    <div>
-      {/* Navigation */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        {['all', 'liked', 'recommended', 'disliked'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); setPage(1); handleClearSearch(); }}
-            style={{ fontWeight: activeTab === tab ? 'bold' : 'normal' }}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)} Movies
-          </button>
-        ))}
-        <button onClick={handleLogout} style={{ marginLeft: 'auto' }}>Logout</button>
-      </div>
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <nav className={styles.navTabs}>
+          {['all', 'liked', 'recommended', 'disliked'].map(tab => (
+            <button
+              key={tab}
+              className={`${styles.navButton} ${activeTab === tab ? styles.active : ''}`}
+              onClick={() => { 
+                  setActiveTab(tab); 
+                  setPage(INITIAL_PAGE);
+                  setSearchPage(INITIAL_PAGE);
+                  handleClearSearch();
+              }}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)} Movies
+            </button>
+          ))}
+        </nav>
+        <button onClick={handleLogout} className={styles.logoutButton}>
+          Logout
+        </button>
+      </header>
 
-      {/* Search Bar */}
-      <form onSubmit={handleSearch} style={{ marginBottom: '1rem' }}>
+      <form onSubmit={(e) => { e.preventDefault(); handleSearch(activeTab, setLoading, setError); }} className={styles.searchForm}>
         <input
           type="text"
           placeholder={`Search in ${activeTab}...`}
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          style={{ width: '60%', marginRight: '1rem' }}
+          className={styles.searchInput}
         />
-        <button type="submit">Search</button>
+        <button type="submit" className={styles.searchButton} disabled={loading}>
+          Search
+        </button>
         {searchResults && (
-          <button type="button" onClick={handleClearSearch} style={{ marginLeft: '1rem' }}>
-            Clear
+          <button type="button" onClick={handleClearSearch} className={styles.clearSearchButton}>
+            Clear Search
           </button>
         )}
       </form>
 
-      {loading && <div>Loading...</div>}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {loading && <div className={styles.loadingMessage}>Loading...</div>}
+      {error && <div className={styles.errorMessage}>{error}</div>}
 
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {getDisplayList().map((movie, idx) => (
-          <li key={idx} style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+      <ul className={styles.movieList}>
+        {currentMovies.map((movie, idx) => (
+          <li key={movie.tmdb_id || idx} className={styles.movieItem} onClick={() => handleMovieClick(movie)}>
             <img
-              src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+              src={movie.poster_path ? `https://image.tmdb.org/t/p/w200${movie.poster_path}` : 'https://via.placeholder.com/120x180?text=No+Poster'}
               alt={movie.title}
-              style={{ width: '100px', marginRight: '1rem', borderRadius: '8px' }}
+              className={styles.moviePoster}
             />
-            <div>
-              <strong>{movie.title}</strong> – {movie.genres.join(', ')}
-              <div><em>Release:</em> {movie.release_date}</div>
-              <div style={{ maxWidth: '400px' }}>{movie.overview}</div>
-              {movie.score !== undefined && <div>Score: {movie.score.toFixed(3)}</div>}
+            <div className={styles.movieDetails}>
+              <strong>{movie.title}</strong>
+              <div><span className={styles.movieDetailsEm}>Genres:</span> {movie.genres?.join(', ') || 'N/A'}</div>
+              <div><span className={styles.movieDetailsEm}>Release:</span> {movie.release_date || 'N/A'}</div>
+              <p className={styles.movieOverview}>{movie.overview || 'No overview available.'}</p>
+              {movie.score !== undefined && <div className={styles.movieScore}>Score: {movie.score.toFixed(3)}</div>}
 
-              <div style={{ marginTop: '0.5rem' }}>
+              <div className={styles.movieActions} onClick={e => e.stopPropagation()}>
                 {activeTab === 'disliked' ? (
-                  <button onClick={() => handleUndoDislike(movie)}>Undo Dislike</button>
+                  <button onClick={() => handleUndoDislike(movie)} className={styles.actionButton}>Undo Dislike</button>
                 ) : (
                   <>
-                    {isLiked(movie.tmdb_id) && (
-                      <span style={{ marginRight: '0.5rem', color: 'green' }}>✔ Liked</span>
+                    {isLiked(movie.tmdb_id) && ( // isLiked is now correctly defined
+                      <span className={styles.statusLiked}>✔ Liked</span>
                     )}
-                    {!isLiked(movie.tmdb_id) && (
-                      <button onClick={() => handleLike(movie)} style={{ marginRight: '0.5rem' }}>
+                    {!isLiked(movie.tmdb_id) && ( // isLiked is now correctly defined
+                      <button onClick={() => handleLike(movie)} className={styles.actionButton}>
                         Like
                       </button>
                     )}
 
-                    {isDisliked(movie.tmdb_id) ? (
-                      <span style={{ color: 'red' }}>✖ Disliked</span>
+                    {isDisliked(movie.tmdb_id) ? ( // isDisliked is now correctly defined
+                      <span className={styles.statusDisliked}>✖ Disliked</span>
                     ) : (
-                      <button onClick={() => handleDislike(movie)}>Dislike</button>
+                      <button onClick={() => handleDislike(movie)} className={styles.actionButton}>Dislike</button>
                     )}
                   </>
                 )}
@@ -235,17 +519,34 @@ export default function HomePage() {
             </div>
           </li>
         ))}
+        {currentMovies.length === 0 && !loading && !error && (
+            <div className={styles.loadingMessage}>No movies to display in this category.</div>
+        )}
       </ul>
 
-      {/* Pagination */}
-      {searchResults === null && (
-        <div>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</button>
-          <span> Page {page} </span>
-          <button onClick={() => setPage(p => p + 1)}>Next</button>
+      {currentTotalPages > 1 && (
+        <div className={styles.pagination}>
+          <button
+            onClick={() => (searchResults !== null ? setSearchPage(p => Math.max(INITIAL_PAGE, p - 1)) : setPage(p => Math.max(INITIAL_PAGE, p - 1)))}
+            disabled={currentPage === INITIAL_PAGE || loading}
+            className={styles.paginationButton}
+          >
+            Previous
+          </button>
+
+          {renderPaginationButtons()}
+
+          <button
+            onClick={() => (searchResults !== null ? setSearchPage(p => p + 1) : setPage(p => p + 1))}
+            disabled={currentPage === currentTotalPages || loading}
+            className={styles.paginationButton}
+          >
+            Next
+          </button>
         </div>
       )}
+
+      <MovieDetailsModal movie={selectedMovie} onClose={handleCloseModal} />
     </div>
   );
 }
-
